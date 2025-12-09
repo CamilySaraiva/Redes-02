@@ -2,6 +2,7 @@ import socket
 import threading
 import json
 import os
+import textwrap
 from datetime import datetime
 
 # Configurações
@@ -9,40 +10,102 @@ HOST = '127.0.0.1'
 PORT = 5000
 ARQUIVO_NOTICIAS = 'noticias.json'
 
-# Armazena clientes: {endereço: [categorias]}
+# Cores para terminal
+class Cor:
+    RESET = '\033[0m'
+    BOLD = '\033[1m'
+    VERDE = '\033[92m'
+    AZUL = '\033[94m'
+    AMARELO = '\033[93m'
+    VERMELHO = '\033[91m'
+    CIANO = '\033[96m'
+    MAGENTA = '\033[95m'
+    CINZA = '\033[90m'
+
+# Categorias e suas cores
+CORES_CATEGORIA = {
+    'tecnologia': Cor.CIANO,
+    'esportes': Cor.AMARELO,
+    'cultura': Cor.MAGENTA,
+    'politica': Cor.VERMELHO,
+    'saude': Cor.VERDE
+}
+
 clientes = {}
 categorias_disponiveis = ['tecnologia', 'esportes', 'cultura', 'politica', 'saude']
+repositorio_noticias = []       # Repositório de notícias em memória 
+lock = threading.Lock()         # Para acesso seguro
 
-# Repositório de notícias em memória
-repositorio_noticias = []
+def formatar_noticia_card(noticia):
+    #Cria um visual de cartão usando caracteres de caixa
+    largura = 60
+    cat = noticia['categoria']
+    cor_tema = CORES_CATEGORIA.get(cat, Cor.RESET)
+    
+    # Bordas da caixinha
+    borda_sup = f"{cor_tema}╔{'═' * largura}╗{Cor.RESET}"
+    borda_inf = f"{cor_tema}╚{'═' * largura}╝{Cor.RESET}"
+    sep = f"{cor_tema}╟{'─' * largura}╢{Cor.RESET}"
+    lateral = f"{cor_tema}║{Cor.RESET}"
+    
+    # Conteúdo Formatado
+    titulo_lines = textwrap.wrap(noticia['titulo'], width=largura-4)
+    resumo_lines = textwrap.wrap(noticia['resumo'], width=largura-4)
+    
+    card = []
+    card.append(borda_sup)          # Topo da caixa
+    
+    titulo_lines = textwrap.wrap(noticia['titulo'].upper(), width=largura-4)    # Título
+    
+    for line in titulo_lines:
+        card.append(f"{lateral} {Cor.BOLD}{line:<{largura-2}}{Cor.RESET} {lateral}")
+    
+    card.append(sep)    # Separador
+    resumo_lines = textwrap.wrap(noticia['resumo'], width=largura-4)    # Resumo
+    
+    if not resumo_lines:            # Se não tiver resumo, coloca uma linha em branco
+        resumo_lines = [""]
 
-# Lock para acesso seguro
-lock = threading.Lock()
+    for line in resumo_lines:
+        card.append(f"{lateral} {line:<{largura-2}} {lateral}")
+        
+    card.append(sep)    # Separador
+    
+    meta_info = f"[{cat.upper()}]  {noticia['data']}  ID:{noticia['id']}"     # Rodapé (categoria | data | id)
+    
+    if len(meta_info) > largura - 2:
+        meta_info = meta_info[:largura-5] + "..."
+        
+    # Adiciona o rodapé
+    card.append(f"{lateral} {Cor.CINZA}{meta_info:<{largura-2}}{Cor.RESET} {lateral}")
+    card.append(borda_inf)
+    
+    return "\n".join(card)
 
 def carregar_noticias():
-    """Carrega notícias do arquivo JSON ao iniciar o servidor"""
+    #Carrega notícias do arquivo JSON ao iniciar o servidor
     global repositorio_noticias
     if os.path.exists(ARQUIVO_NOTICIAS):
         try:
             with open(ARQUIVO_NOTICIAS, 'r', encoding='utf-8') as f:
                 repositorio_noticias = json.load(f)
-            print(f"[INFO] {len(repositorio_noticias)} noticia(s) carregada(s) do arquivo")
+            print(f"{Cor.VERDE}[INFO] {len(repositorio_noticias)} noticias carregadas.{Cor.RESET}")
         except Exception as e:
-            print(f"[ERRO] Erro ao carregar noticias: {e}")
+            print(f"{Cor.VERMELHO}[ERRO] {e}{Cor.RESET}")
             repositorio_noticias = []
     else:
         repositorio_noticias = []
 
 def salvar_noticias():
-    """Salva notícias no arquivo JSON"""
+    #Salva notícias no arquivo JSON
     try:
         with open(ARQUIVO_NOTICIAS, 'w', encoding='utf-8') as f:
             json.dump(repositorio_noticias, f, ensure_ascii=False, indent=2)
     except Exception as e:
-        print(f"[ERRO] Erro ao salvar noticias: {e}")
+        print(f"{Cor.VERMELHO}[ERRO] Erro ao salvar noticias: {e}{Cor.RESET}")
 
 def adicionar_noticia(titulo, resumo, categoria):
-    """Adiciona notícia ao repositório"""
+    #Adiciona notícia ao repositório
     noticia = {
         'id': len(repositorio_noticias) + 1,
         'titulo': titulo,
@@ -52,59 +115,60 @@ def adicionar_noticia(titulo, resumo, categoria):
     }
     repositorio_noticias.append(noticia)
     salvar_noticias()
-    print(f"[SALVO] Noticia #{noticia['id']} salva no repositorio")
+    print(f"{Cor.VERDE}[SALVO]{Cor.RESET} Noticia #{noticia['id']} adicionada.")
     return noticia
 
 def listar_noticias_categoria(categoria):
-    """Lista notícias de uma categoria específica"""
+    #Lista notícias de uma categoria específica
     return [n for n in repositorio_noticias if n['categoria'] == categoria]
 
 def publicar_noticia(noticia, sock):
-    """Publica noticia para clientes inscritos"""
+    # Publica notícia para os clientes inscritos na categoria
+    mensagem_visual = formatar_noticia_card(noticia)
     categoria = noticia['categoria']
-    mensagem_noticia = f"\n{'='*50}\n[NOTICIA] #{noticia['id']} [{categoria.upper()}]\n{'-'*50}\n{noticia['titulo']}\n{noticia['resumo']}\n{noticia['data']}\n{'='*50}\n"
     enviados = 0
     
     with lock:
         for endereco, cats in clientes.items():
             if categoria in cats:
                 try:
-                    sock.sendto(mensagem_noticia.encode('utf-8'), endereco)
+                    sock.sendto(mensagem_visual.encode('utf-8'), endereco)
                     enviados += 1
-                    print(f"  [ENVIADO] Para {endereco}")
+                    print(f"  {Cor.VERDE}[ENVIADO]{Cor.RESET} Para {endereco}")
                 except Exception as e:
-                    print(f"[ERRO] Falha ao enviar para {endereco}: {e}")
+                    print(f"{Cor.VERMELHO}[ERRO] Falha ao enviar para {endereco}: {e}{Cor.RESET}")
     
-    print(f"[PUBLICADO] #{noticia['id']} '{noticia['titulo']}' em '{categoria}' para {enviados} cliente(s)")
+    print(f"{Cor.AZUL}[PUBLICADO]{Cor.RESET} #{noticia['id']} para {enviados} cliente(s).")
 
 def processar_mensagem(dados, endereco, sock):
-    """Processa mensagem do cliente/editor"""
+    #Processa mensagem do cliente/editor
     try:
         mensagem = dados.decode('utf-8').strip()
-        print(f"\n[RECEBIDO] {endereco}: {mensagem}")
+        print(f"\n{Cor.AZUL}[RECEBIDO]{Cor.RESET} {endereco}: {mensagem}")
         
         partes = mensagem.split(maxsplit=1)
         comando = partes[0].upper()
         resposta = None
         
-        # Processa comando
+        # Processamento dos comandos
         if comando == 'INSCREVER':
             if len(partes) > 1:
                 cats = partes[1].split()
                 with lock:
                     if endereco not in clientes:
                         clientes[endereco] = []
-                        print(f"[NOVO] Cliente {endereco}")
+                        print(f"{Cor.AZUL}[NOVO]{Cor.RESET} Cliente {endereco}")
                     
+                    added = []
                     for cat in cats:
                         cat = cat.lower()
                         if cat in categorias_disponiveis and cat not in clientes[endereco]:
                             clientes[endereco].append(cat)
+                            added.append(cat)
                     
-                    resposta = f"[OK] Inscrito em: {', '.join(clientes[endereco])}"
-                    print(f"[INSCRITO] {endereco} em {clientes[endereco]}")
+                    resposta = f"{Cor.VERDE}[OK] ✓ Inscrito em: {', '.join(clientes[endereco])}{Cor.RESET}"
             else:
-                resposta = "[ERRO] Uso: INSCREVER categoria1 categoria2 ..."
+                resposta = f"{Cor.AMARELO}⚠ Uso: INSCREVER categoria{Cor.RESET}"
         
         elif comando == 'REMOVER':
             with lock:
@@ -114,34 +178,33 @@ def processar_mensagem(dados, endereco, sock):
                         cat = cat.lower()
                         if cat in clientes[endereco]:
                             clientes[endereco].remove(cat)
-                    resposta = f"[OK] Removido. Inscricoes atuais: {', '.join(clientes[endereco]) or 'Nenhuma'}"
+                    resposta = f"{Cor.VERDE}[OK] Removido. Inscricoes atuais: {', '.join(clientes[endereco]) or 'Nenhuma'}{Cor.RESET}"
                 else:
-                    resposta = "[ERRO] Voce nao esta inscrito em nenhuma categoria"
-        
+                    resposta = f"{Cor.VERMELHO}✗ Erro ou não inscrito.{Cor.RESET}"
+
         elif comando == 'LISTAR':
             with lock:
                 if endereco in clientes and clientes[endereco]:
-                    resposta = f"Suas inscricoes: {', '.join(clientes[endereco])}"
+                    resposta = f"{Cor.CINZA}Suas inscricoes: {', '.join(clientes[endereco])}{Cor.RESET}"
                 else:
-                    resposta = "Voce nao esta inscrito em nenhuma categoria"
+                    resposta = f"{Cor.CINZA}Nenhuma inscrição ativa.{Cor.RESET}"
         
         elif comando == 'CATEGORIAS':
-            resposta = f"Categorias disponíveis: {', '.join(categorias_disponiveis)}"
+            resposta = f"{Cor.AMARELO}Categorias:{Cor.RESET} {Cor.BOLD}{', '.join(categorias_disponiveis)}{Cor.RESET}"
         
         elif comando == 'HISTORICO':
             if len(partes) > 1:
                 categoria = partes[1].strip().lower()
                 noticias = listar_noticias_categoria(categoria)
                 if noticias:
-                    resposta = f"\n📚 HISTÓRICO [{categoria.upper()}] - {len(noticias)} notícia(s):\n"
-                    for n in noticias[-10:]:
-                        resposta += f"\n#{n['id']} - {n['data']}\n📌 {n['titulo']}\n💬 {n['resumo']}\n{'-'*40}"
+                    resposta = f"\n{Cor.BOLD}=== HISTÓRICO: {categoria.upper()} ==={Cor.RESET}\n"
+                    for n in noticias[-10:]: 
+                        resposta += formatar_noticia_card(n) + "\n"
                 else:
-                    resposta = f"Nenhuma notícia encontrada em '{categoria}'"
+                    resposta = f"Nenhuma notícia em '{categoria}'"
             else:
-                total = len(repositorio_noticias)
-                resposta = f"📚 Total de notícias no repositório: {total}\nUso: HISTORICO categoria"
-        
+                resposta = f"{Cor.AMARELO}Uso: HISTORICO categoria{Cor.RESET}"
+
         elif comando == 'PUB':
             if len(partes) > 1:
                 dados_noticia = partes[1].split('|')
@@ -153,27 +216,27 @@ def processar_mensagem(dados, endereco, sock):
                         with lock:
                             noticia = adicionar_noticia(titulo, resumo, categoria)
                         publicar_noticia(noticia, sock)
-                        resposta = f"✓ Notícia #{noticia['id']} publicada e salva!"
+                        resposta = f"{Cor.VERDE}✓ Publicado #{noticia['id']}{Cor.RESET}"
                     else:
-                        resposta = f"✗ Categoria inválida. Use: {', '.join(categorias_disponiveis)}"
+                        resposta = f"{Cor.VERMELHO}✗ Categoria inválida{Cor.RESET}"
                 else:
-                    resposta = "✗ Formato: pub titulo|resumo|categoria"
+                    resposta = f"{Cor.AMARELO}Formato incorreto{Cor.RESET}"
             else:
-                resposta = "✗ Formato: pub titulo|resumo|categoria"
+                resposta = f"{Cor.AMARELO}Formato: pub titulo|resumo|cat{Cor.RESET}"
         
         else:
-            resposta = f"✗ Comando desconhecido: {comando}"
+            resposta = f"{Cor.VERMELHO}✗ Comando desconhecido: {comando}{Cor.RESET}"
         
         # Envia resposta
         if resposta:
             try:
                 sock.sendto((resposta + "\n").encode('utf-8'), endereco)
-                print(f"  📤 Resposta enviada para {endereco}")
+                print(f"  Resposta enviada para {Cor.VERDE}{endereco}{Cor.RESET}")
             except Exception as e:
-                print(f"[ERRO] Falha ao enviar resposta: {e}")
+                print(f"{Cor.VERMELHO}[ERRO] Falha ao enviar resposta:{Cor.RESET} {e}")
     
     except Exception as e:
-        print(f"[ERRO] processar_mensagem: {e}")
+        print(f"{Cor.VERMELHO}[ERRO] processar:{Cor.RESET} {e}")
 
 def main():
     carregar_noticias()
@@ -182,25 +245,20 @@ def main():
     sock.bind((HOST, PORT))
     sock.settimeout(1.0)
     
-    print(f"🚀 Servidor UDP rodando em {HOST}:{PORT}")
-    print(f"📂 Categorias: {', '.join(categorias_disponiveis)}")
-    print(f"💾 Repositório: {len(repositorio_noticias)} notícia(s) em memória\n")
+    print(f"{Cor.BOLD}SERVIDOR UDP ONLINE{Cor.RESET} porta {PORT}")
     
     rodando = True
     while rodando:
         try:
             dados, endereco = sock.recvfrom(4096)
-            # Processa na thread principal para evitar race conditions
-            processar_mensagem(dados, endereco, sock)
+            processar_mensagem(dados, endereco, sock)   # Processa na thread principal
         except socket.timeout:
             continue
         except KeyboardInterrupt:
-            print("\n\n[SERVIDOR] Encerrando...")
-            print(f"💾 {len(repositorio_noticias)} notícia(s) salva(s) em '{ARQUIVO_NOTICIAS}'")
+            print(f"\n\n{Cor.AMARELO}[SERVIDOR] Encerrando...{Cor.RESET}")
+            print(f"{Cor.CINZA}💾 {len(repositorio_noticias)} notícia(s) salva(s) em '{ARQUIVO_NOTICIAS}'{Cor.RESET}")
             rodando = False
-        except Exception as e:
-            print(f"[ERRO] main loop: {e}")
-    
+            salvar_noticias()
     sock.close()
 
 if __name__ == '__main__':

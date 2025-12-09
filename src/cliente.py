@@ -8,16 +8,15 @@ PORT = 5000
 def main():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     
-    # Aguarda 1 segundo para o servidor iniciar
-    time.sleep(1)
+    time.sleep(1)       # Aguarda 1 segundo para o servidor iniciar
     
-    print("Cliente de Notícias (UDP)")
+    print("\n=== CLIENTE DE NOTÍCIAS (UDP) ===")
     print("\nComandos:")
-    print("  INSCREVER tecnologia esportes")
+    print("  INSCREVER categoria1 categoria2")
     print("  LISTAR")
-    print("  REMOVER tecnologia")
+    print("  REMOVER categoria")
     print("  CATEGORIAS")
-    print("  HISTORICO tecnologia")
+    print("  HISTORICO categoria")
     print("  SAIR\n")
     
     while True:
@@ -43,7 +42,7 @@ def main():
                     continue
                 
                 if mensagem.upper() == 'SAIR':
-                    print("👋 Até logo!")
+                    print("Saindo...")
                     break
                 
                 # Envia para servidor
@@ -53,7 +52,7 @@ def main():
                 break
             
         except KeyboardInterrupt:
-            print("\n👋 Até logo!")
+            print("\nAté logo!")
             break
         except Exception as e:
             print(f"Erro: {e}")
