@@ -9,7 +9,7 @@ RESET = '\033[0m'
 BOLD = '\033[1m'
 
 def main():
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # Cria socket UDP
     
     # Aguarda 1 segundo para o servidor iniciar
     time.sleep(1)
@@ -18,7 +18,8 @@ def main():
     print(f"{BOLD}Categorias:{RESET} tecnologia, esportes, cultura, politica, saude\n")
     
     while True:
-        try:
+        try: 
+            # Solicita dados da notícia
             titulo = input(f"{BOLD}Título{RESET} (ou Enter para sair): ").strip()
             if not titulo:
                 break

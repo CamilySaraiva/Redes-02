@@ -6,9 +6,9 @@ import textwrap
 from datetime import datetime
 
 # Configurações
-HOST = '127.0.0.1'
-PORT = 5000
-ARQUIVO_NOTICIAS = 'noticias.json'
+HOST = '127.0.0.1' # localhost - servidor que roda localmente
+PORT = 5000 #porta que o servidor escuta
+ARQUIVO_NOTICIAS = 'noticias.json' # arquivo para persistência das notícias
 
 # Cores para terminal
 class Cor:
@@ -31,10 +31,11 @@ CORES_CATEGORIA = {
     'saude': Cor.VERDE
 }
 
-clientes = {}
+clientes = {}          # Mapeia endereços de clientes para suas inscrições
 categorias_disponiveis = ['tecnologia', 'esportes', 'cultura', 'politica', 'saude']
-repositorio_noticias = []       # Repositório de notícias em memória 
-lock = threading.Lock()         # Para acesso seguro
+repositorio_noticias = []       # Lista de todas as notícias em memória
+lock = threading.Lock()         # Semáforo para evitar race condition entre threads
+
 
 def formatar_noticia_card(noticia):
     #Cria um visual de cartão usando caracteres de caixa
@@ -84,17 +85,17 @@ def formatar_noticia_card(noticia):
 
 def carregar_noticias():
     #Carrega notícias do arquivo JSON ao iniciar o servidor
-    global repositorio_noticias
+    global repositorio_noticias 
     if os.path.exists(ARQUIVO_NOTICIAS):
         try:
             with open(ARQUIVO_NOTICIAS, 'r', encoding='utf-8') as f:
-                repositorio_noticias = json.load(f)
+                repositorio_noticias = json.load(f) #carrega o json
             print(f"{Cor.VERDE}[INFO] {len(repositorio_noticias)} noticias carregadas.{Cor.RESET}")
         except Exception as e:
             print(f"{Cor.VERMELHO}[ERRO] {e}{Cor.RESET}")
-            repositorio_noticias = []
+            repositorio_noticias = [] # Se der erro, inicia vazio
     else:
-        repositorio_noticias = []
+        repositorio_noticias = [] # Inicia vazio se o arquivo não existir
 
 def salvar_noticias():
     #Salva notícias no arquivo JSON
@@ -113,8 +114,8 @@ def adicionar_noticia(titulo, resumo, categoria):
         'categoria': categoria,
         'data': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     }
-    repositorio_noticias.append(noticia)
-    salvar_noticias()
+    repositorio_noticias.append(noticia) # Adiciona à lista
+    salvar_noticias() # Salva no arquivo  
     print(f"{Cor.VERDE}[SALVO]{Cor.RESET} Noticia #{noticia['id']} adicionada.")
     return noticia
 
@@ -128,10 +129,11 @@ def publicar_noticia(noticia, sock):
     categoria = noticia['categoria']
     enviados = 0
     
-    with lock:
+    with lock: # Evita race conditions ao acessar clientes
         for endereco, cats in clientes.items():
             if categoria in cats:
                 try:
+                    # Envia a notícia formatada via UDP para o endereço do cliente
                     sock.sendto(mensagem_visual.encode('utf-8'), endereco)
                     enviados += 1
                     print(f"  {Cor.VERDE}[ENVIADO]{Cor.RESET} Para {endereco}")
@@ -143,18 +145,18 @@ def publicar_noticia(noticia, sock):
 def processar_mensagem(dados, endereco, sock):
     #Processa mensagem do cliente/editor
     try:
-        mensagem = dados.decode('utf-8').strip()
+        mensagem = dados.decode('utf-8').strip() #Decodifica bytes para string
         print(f"\n{Cor.AZUL}[RECEBIDO]{Cor.RESET} {endereco}: {mensagem}")
         
-        partes = mensagem.split(maxsplit=1)
-        comando = partes[0].upper()
-        resposta = None
+        partes = mensagem.split(maxsplit=1) # Divide comando e argumentos
+        comando = partes[0].upper() # Comando em maiúsculas
+        resposta = None 
         
         # Processamento dos comandos
         if comando == 'INSCREVER':
             if len(partes) > 1:
-                cats = partes[1].split()
-                with lock:
+                cats = partes[1].split() # Divide categorias por espaço
+                with lock: # protege acesso a clientes
                     if endereco not in clientes:
                         clientes[endereco] = []
                         print(f"{Cor.AZUL}[NOVO]{Cor.RESET} Cliente {endereco}")
@@ -198,7 +200,7 @@ def processar_mensagem(dados, endereco, sock):
                 noticias = listar_noticias_categoria(categoria)
                 if noticias:
                     resposta = f"\n{Cor.BOLD}=== HISTÓRICO: {categoria.upper()} ==={Cor.RESET}\n"
-                    for n in noticias[-10:]: 
+                    for n in noticias[-10:]:  # Últimas 10 notícias
                         resposta += formatar_noticia_card(n) + "\n"
                 else:
                     resposta = f"Nenhuma notícia em '{categoria}'"
@@ -207,6 +209,7 @@ def processar_mensagem(dados, endereco, sock):
 
         elif comando == 'PUB':
             if len(partes) > 1:
+                # formato: pub titulo|resumo|categoria
                 dados_noticia = partes[1].split('|')
                 if len(dados_noticia) == 3:
                     titulo, resumo, categoria = [d.strip() for d in dados_noticia]
@@ -239,10 +242,10 @@ def processar_mensagem(dados, endereco, sock):
         print(f"{Cor.VERMELHO}[ERRO] processar:{Cor.RESET} {e}")
 
 def main():
-    carregar_noticias()
+    carregar_noticias() # Carrega notícias salvas ao iniciar
     
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind((HOST, PORT))
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # Cria socket UDP
+    sock.bind((HOST, PORT)) # Liga ao endereço e porta
     sock.settimeout(1.0)
     
     print(f"{Cor.BOLD}SERVIDOR UDP ONLINE{Cor.RESET} porta {PORT}")
@@ -250,16 +253,16 @@ def main():
     rodando = True
     while rodando:
         try:
-            dados, endereco = sock.recvfrom(4096)
+            dados, endereco = sock.recvfrom(4096) # espera receber dados (até 4KB)
             processar_mensagem(dados, endereco, sock)   # Processa na thread principal
         except socket.timeout:
-            continue
-        except KeyboardInterrupt:
+            continue # Timeout para permitir checagem de encerramento
+        except KeyboardInterrupt: # Ctrl+C para encerrar
             print(f"\n\n{Cor.AMARELO}[SERVIDOR] Encerrando...{Cor.RESET}")
             print(f"{Cor.CINZA}💾 {len(repositorio_noticias)} notícia(s) salva(s) em '{ARQUIVO_NOTICIAS}'{Cor.RESET}")
             rodando = False
-            salvar_noticias()
-    sock.close()
+            salvar_noticias() # Salva notícias ao encerrar
+    sock.close() # Fecha o socket
 
 if __name__ == '__main__':
     main()

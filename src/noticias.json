@@ -54,5 +54,19 @@
     "resumo": "Ícone do indie rock se apresenta no campus universitário em abril de 2026; produção é assinada pelo festival No Ar Coquetel Molotov.",
     "categoria": "cultura",
     "data": "2025-12-08 21:20:15"
+  },
+  {
+    "id": 9,
+    "titulo": "super noticia cultural",
+    "resumo": "fernanda torres ganhou o oscar do ano!",
+    "categoria": "cultura",
+    "data": "2025-12-08 22:23:38"
+  },
+  {
+    "id": 10,
+    "titulo": "bomba no mundo tech!",
+    "resumo": "atenção as IA'S estão dominando o mundo, os idosos estão achando que os gatos podem dar cambalhotas devido as vídeos realistas nas redes sociais.",
+    "categoria": "tecnologia",
+    "data": "2025-12-08 22:35:18"
   }
 ]
